@@ -18,6 +18,9 @@ class Agent(object):
         # TODO you can replace this with your own model
         self.filename = 'agents/yourteamname/trained_model'
         self.trained_model = pickle.load(open(self.filename, 'rb'))
+        self.pricing_history = []
+        self.customer_decision_history = []
+        self.competitor_pricing_history = []
 
     def _process_last_sale(self, last_sale, profit_each_team):
         # print("last_sale: ", last_sale)
@@ -43,6 +46,9 @@ class Agent(object):
         # print("Which item customer bought: ", which_item_customer_bought)
 
         # TODO - add your code here to potentially update your pricing strategy based on what happened in the last round
+        self.pricing_history.append(my_last_prices)
+        self.competitor_pricing_history.append(opponent_last_prices)
+        self.customer_decision_history.append(did_customer_buy_from_me)
         pass
 
     # Given an observation which is #info for new buyer, information for last iteration, and current profit from each time
@@ -50,7 +56,14 @@ class Agent(object):
     # Data from last iteration (which item customer purchased, who purchased from, prices for each agent for each item (2x2, where rows are agents and columns are items)))
     # Returns an action: a list of length n_items, indicating prices this agent is posting for each item.
     def action(self, obs):
+        new_buyer_covariates, last_sale, profit_each_team = obs
+        self._process_last_sale(last_sale, profit_each_team)
 
+        # Example strategy for Part 1:
+        if self.project_part == 1:
+            customer_valuation = new_buyer_covariates[0]
+            suggested_price = self.determine_price(customer_valuation)
+            return [suggested_price]
         # For Part 1, new_buyer_covariates will simply be a vector of length 1, containing a single numeric float indicating the valuation the user has for the (single) item
         # For Part 2, new_buyer_covariates will be a vector of length 3 that can be used to estimate demand from that user for each of the two items
         new_buyer_covariates, last_sale, profit_each_team = obs
@@ -66,3 +79,20 @@ class Agent(object):
         # and to use the history of prices from each team in order to set prices for each item.
         if self.project_part == 2:
             return self.trained_model.predict(np.array([1, 2, 3]).reshape(1, -1))[0] + random.random()
+    def determine_price(self, customer_valuation):
+        """
+        Determines the price to set based on customer valuation and historical data.
+        """
+
+        if len(self.customer_decision_history) > 0 and not self.customer_decision_history[-1]:
+            last_competitor_price = self.competitor_pricing_history[-1]
+            last_my_price = self.pricing_history[-1]
+
+            if isinstance(last_competitor_price, (list, tuple)):
+                last_competitor_price = sum(last_competitor_price) / len(last_competitor_price)  
+
+            if isinstance(last_my_price, (list, tuple)):
+                last_my_price = sum(last_my_price) / len(last_my_price) 
+            if last_my_price > last_competitor_price:
+                return max(customer_valuation * 0.9, last_competitor_price * 1.01)
+        return customer_valuation * 0.95
